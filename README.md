@@ -9,7 +9,8 @@ Agent kit for writing client-side Lua/Luau scripts with AI help. Three roles (`l
 
 ## Prerequisites
 
-- Agent framework that supports `config.json` with global + per-agent instructions.
+- Git (to clone this repo).
+- Agent framework that supports `config.json` with global + per-agent instructions (OpenCode recommended).
 - Basic Luau knowledge (variables, functions, tables). See `skills/basics.md` for a refresher.
 
 ## Structure
@@ -50,19 +51,105 @@ You → lead → writer → checker → lead → you
 
 Skill files are never guessed. If a listed skill is missing, the agent must stop and ask you.
 
-## Installation
+## Installation (Step by Step)
 
-### Option A: OpenCode / compatible framework
+### Option A: OpenCode (recommended, auto-load skills)
 
-1. Copy the `lua-toolkit/` folder to your project root.
-2. Point the framework at `D:\lua-toolkit\config.json` (or your copy path).
-3. Confirm 3 agents register: `lead` (primary), `writer` + `checker` (subagents).
+1. Clone the repo:
+   ```powershell
+   git clone https://github.com/Nbill27/lua.git lua-toolkit
+   Set-Location lua-toolkit
+   ```
+2. Open the folder in OpenCode (or point your framework at it).
+3. Confirm the framework loads `config.json`. It must register:
+   - `lead` as primary agent with instructions `routing.md`, `skills/scripting.md`, `skills/api-lookup.md`.
+   - `writer` as subagent with all 5 skills.
+   - `checker` as subagent with `rules.md`, `scripting.md`, `performance.md`.
+   - Global instructions `rules.md` for every agent.
+4. Verify the wiring with a smoke test. Ask `lead`:
+   ```text
+   List the skills you must read for your role and the order.
+   ```
+   Correct answer mentions `routing.md` first, then `scripting.md` + `api-lookup.md`. If it invents other files, the config did not load — re-check the `config.json` path.
+5. Done. Go to Usage below and send your first build request to `lead`.
 
-### Option B: Manual (any AI chat)
+### Option B: Manual (any AI chat, no framework)
 
-1. Paste `rules.md` + `routing.md` into the chat first.
-2. Paste the role file you need (`roles/writer.md` for building, `roles/checker.md` for review).
-3. Paste the skill files listed in that role's "Required Skills to Read" section.
+1. Clone or download the repo so you have all 12 files locally.
+2. Start a new chat. Paste these two files first, in order:
+   - `rules.md` (global coding rules).
+   - `routing.md` (role-to-skill map).
+3. Decide which role you need:
+   - Building something → paste `roles/writer.md`, then paste every skill in its "Required Skills to Read" section.
+   - Reviewing a script → paste `roles/checker.md`, then paste `rules.md` + `skills/scripting.md` + `skills/performance.md`.
+   - End-to-end (build + review) → do the writer round first, then open the checker round with the writer output.
+4. Send your request (see Usage example). If the model says a skill is missing, paste that file — never let it guess the content.
+
+## Roles Explained
+
+### `lead` — The Orchestrator (primary agent)
+
+- **Task:** understand your request, split it into build steps, delegate to `writer`, send the result to `checker`, enforce max 2 retry rounds, deliver the final package.
+- **Reads:** `routing.md` first, then `skills/scripting.md` + `skills/api-lookup.md`.
+- **Writes:** no code. Only plans, contracts, and the final report.
+- **Input from you:** goal + feature list + constraints (example: "ESP toggle, 20 boxes, mobile layout").
+- **Output to you:** summary, full script, usage steps, limits, checker score/verdict.
+- **Use when:** every new task starts here. Never skip `lead` for multi-step work.
+- **Stops when:** request is vague (asks 1 clarification round), checker rejects twice (reports blocker instead of looping forever).
+
+### `writer` — The Builder (subagent)
+
+- **Task:** produce one complete runnable script from the `lead` contract.
+- **Reads:** `routing.md` + all 5 skills (`basics`, `scripting`, `performance`, `api-lookup`, `networking`).
+- **Follows:** 6-stage template (Load → Settings → Utility → UI → Main Loop → Save/Load), defaults table below, self-check checklist before handoff.
+- **Input:** build contract from `lead` (goal, features, constraints).
+- **Output:** feature summary, full script block (no TODOs, no fake URLs), usage, performance notes (interval, render count), known limits.
+- **Use when:** `lead` delegates a build, or you manually need fresh code.
+- **Never:** claims perfection, writes destructive code, ignores mobile, leaves placeholders.
+
+### `checker` — The Reviewer (subagent)
+
+- **Task:** verify the writer output against `rules.md` + `scripting.md` + `performance.md`.
+- **Reads:** `routing.md`, `rules.md`, `skills/scripting.md`, `skills/performance.md`.
+- **Checks:** quality (locals, structure, no placeholders), error handling (`pcall`, nil guards, JSON validation), performance (interval, render cap, cache, mobile), safety (no wipe, no spam, cooldown on remotes).
+- **Input:** full writer script + original goal.
+- **Output (in order):** verdict `PASS` / `REVISE` / `REJECT` on line 1, score 1-10 with reason, issue list with file/line + severity, ready-to-paste fix per blocker/major, retry note for next round.
+- **Use when:** every writer draft must pass here before reaching you.
+- **Score guide:** 9-10 pass, 7-8 small revise, 5-6 structural revise, 1-4 reject.
+
+## Skills Explained
+
+All skill files are in English. Each has frontmatter (`name`, `description`) stating when to use it and where to hand off next.
+
+### `skills/basics.md` — Luau language refresher
+
+- **Contains:** `local` variables, type hints, conditions with early return, `ipairs`/`pairs`/`while` loops, functions, tables, `table.concat` vs `..` concat, type-guard validators, `task.wait`/`task.spawn`/`task.delay` idioms, `pcall` wrapper pattern, 7 common mistakes with fixes.
+- **Use when:** writing or reviewing any Luau code, fixing nil-index crashes, cleaning globals or deep nesting.
+- **Hands off to:** `scripting` for runtime wiring, `performance` for hot-path tuning.
+
+### `skills/scripting.md` — Client runtime template (the core skill)
+
+- **Contains:** service bootstrap, player/character/humanoid guards, respawn reconnect, full 6-stage runnable template (Load → Settings → Utility → Wild UI → Heartbeat loop → JSON save/load with type-validated merge), Wild UI toggle binding, ESP pattern (Drawing cache, team check, `WorldToViewportPoint`, 20-box cap, cleanup on leave), touch sizing (`120x48` touch vs `100x32` PC), debugging ladder.
+- **Use when:** building or reviewing any script in this kit. `lead` and `writer` and `checker` all read it.
+- **Hands off to:** `api-lookup` for exact property/event names, `performance` for frame budget, `networking` for remotes.
+
+### `skills/performance.md` — Frame-budget guard
+
+- **Contains:** hot-path rules (early exit, cache, no alloc in Heartbeat), interval accumulator template with budget table (heavy scan 0.25-0.5s, ESP 0.05-0.1s), humanoid cache with clear-on-leave, 20-box render budget, N-per-tick batch processor, Heartbeat-vs-RenderStepped decision table, 5-box checklist.
+- **Use when:** loop feels slow, frame drops, ESP list grows, or `checker` flags uncapped rendering.
+- **Hands off to:** `scripting` for loop placement, `basics` for table-reuse syntax.
+
+### `skills/api-lookup.md` — Property and event dictionary
+
+- **Contains:** core services list, player/character/humanoid fields, respawn guard snippet, UserInputService props + events with touch example, RunService events, camera projection (`WorldToViewportPoint`), Vector3/CFrame/Vector2 notes, Drawing API (types, props, cleanup), HttpService JSON + file-func guards, Enum and UDim2 quick refs.
+- **Use when:** you need an exact name (property, event, enum) instead of guessing.
+- **Hands off to:** `scripting` for wiring, `networking` for remote objects. Server-side stores omitted by design.
+
+### `skills/networking.md` — Client-side remote guide
+
+- **Contains:** RemoteEvent vs RemoteFunction, `WaitForChild` with timeout, arg validator (string, length cap), `FireServer` with 0.5s cooldown, `InvokeServer` with `pcall` (never in RenderStepped), `OnClientEvent` listener with disconnect, limits list (server may reject, validate before session, handle nil/timeout).
+- **Use when:** the script must read or trigger a remote from the client side.
+- **Hands off to:** `scripting` for loop wiring, `performance` for call batching.
 
 ## Usage
 
@@ -82,16 +169,6 @@ What you get back:
 5. **Limits** — what the script does not handle + checker score/verdict.
 
 Vague requests trigger one clarification round first (behavior, scope, UI), then the build starts.
-
-## Roles and Skills Map
-
-| Role | Must read | Why |
-|------|-----------|-----|
-| `lead` | `routing.md`, `scripting.md`, `api-lookup.md` | Scope the job correctly before delegating |
-| `writer` | `routing.md` + all 5 skills | Full context: syntax, template, speed, API, remotes |
-| `checker` | `routing.md`, `rules.md`, `scripting.md`, `performance.md` | Verify structure, error handling, frame budget |
-
-Handoff order: `basics` → `scripting` → `performance` → `api-lookup` → `networking`.
 
 ## Defaults You Should Know
 
