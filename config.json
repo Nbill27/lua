@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/schema.json",
+  "formatter": true,
+  "instructions": ["rules.md"],
+  "agent": {
+    "lead": {
+      "description": "Orchestrator. Analyze request, delegate to writer/checker, integrate result.",
+      "mode": "primary",
+      "prompt": "roles/lead.md",
+      "color": "blue",
+      "instructions": ["routing.md", "skills/scripting.md", "skills/api-lookup.md"]
+    },
+    "writer": {
+      "description": "Script Writer. Write client-side Lua/Luau scripts with Wild UI, pcall, config save/load.",
+      "mode": "subagent",
+      "prompt": "roles/writer.md",
+      "color": "green",
+      "instructions": ["routing.md", "skills/basics.md", "skills/scripting.md", "skills/performance.md", "skills/api-lookup.md", "skills/networking.md"]
+    },
+    "checker": {
+      "description": "Reviewer. Review script for correctness, error handling, performance.",
+      "mode": "subagent",
+      "prompt": "roles/checker.md",
+      "color": "yellow",
+      "instructions": ["routing.md", "rules.md", "skills/scripting.md", "skills/performance.md"]
+    }
+  }
+}
